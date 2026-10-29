@@ -118,6 +118,10 @@ h1{margin:4px 0 0;font:700 26px/1.05 var(--font-display);text-wrap:balance}
 .fcount{font-size:13px;font-variant-numeric:tabular-nums}
 .fcount b{font-weight:600}
 .grp{display:grid;gap:7px}
+.ramp button{height:14px;border:0;padding:0;cursor:pointer}
+.ramp button[aria-pressed="true"]{outline:2.5px solid var(--fg);outline-offset:1px;position:relative;z-index:1}
+.ramp button:focus-visible{outline:2px solid var(--fg)}
+.ramp button:first-child{border-radius:4px 0 0 4px}.ramp button:last-child{border-radius:0 4px 4px 0}
 .fonsrow select{font:14px var(--font-body);color:var(--fg);background:var(--chip);border:1px solid var(--line);border-radius:8px;padding:5px 8px;max-width:60%}
 .oprow input[type=range]{flex:1;min-width:0;accent-color:var(--fg)}
 .opv{font-size:13px;font-variant-numeric:tabular-nums;width:3.2em;text-align:right}
@@ -208,6 +212,10 @@ h1{margin:4px 0 0;font:700 26px/1.05 var(--font-display);text-wrap:balance}
     <div class="parties" id="prioritat" role="group" aria-label="Prioritat de campanya"></div>
   </div>
   <div class="grp">
+    <span class="lbl">Evolució 2019 → 2023</span>
+    <div class="parties" id="evolucio" role="group" aria-label="Evolució 2019 a 2023"></div>
+  </div>
+  <div class="grp">
     <span class="lbl">Renda</span>
     <div class="parties" id="renda" role="group" aria-label="Renda"></div>
   </div>
@@ -219,6 +227,7 @@ h1{margin:4px 0 0;font:700 26px/1.05 var(--font-display);text-wrap:balance}
     <div class="ttl" id="legend-title">% sobre vots vàlids</div>
     <div class="ramp" id="ramp"></div>
     <div class="ticks" id="ticks"></div>
+    <div class="bivtxt" id="catinfo" hidden></div>
     <div class="biv" id="biv" hidden>
       <div class="bivwrap">
         <span class="bivy">Sumar →</span>
@@ -356,11 +365,29 @@ const RENDA=[{id:'renda', nom:'Renda neta per persona', grup:'renda', sempre:tru
   titol:'Renda neta mitjana per persona, 2023 (milers d\'€)', filtre:'Filtra per renda (€)',
   nota:'Atlas de Distribució de Renda de les Llars (INE), any 2023. Intervals pensats per destacar les rendes altes: el color més fosc (≥ 25.000 €) correspon al 4 % de seccions amb més renda (223) i el següent (21.000–25.000 €) al 7 %. L\'INE no publica la dada de 22 seccions petites per secret estadístic.'}];
 const PRIORITAT=[{id:'prioritat', nom:'Seccions prioritàries', grup:'prioritat', unitat:'', pas:0.1, dot:'#b30000',
-  val:d=>d.pr??null, suma:potencial, breaks:[30.4,50.7,69.5,80.6], ramp:['#f1eee6','#d8d2c3','#fdbb84','#e34a33','#7f0000'],
+  val:d=>d.pr??null, suma:potencial, breaks:[33,51,67.3,76.8], ramp:['#f1eee6','#d8d2c3','#fdbb84','#e34a33','#7f0000'],
   labels:['Molt baixa','Baixa','P3','P2','P1'],
   titol:'Prioritat de campanya per a Sumar · índex multifactorial (0–100)', filtre:'Filtra per índex de prioritat',
-  nota:'Índex que combina mobilització (35 %: vot potencial entre abstencionistes), persuasió (25 %: vot d\'esquerres no-Sumar on Sumar ja té quota), base (25 %: % de Sumar) i perfil (15 %: renda de la secció). P1 = el 10 % de seccions amb índex més alt; P2 = el 15 % següent; P3 = el 25 % següent.'}];
-const CAPES = [...PARTITS, ...PRIORITAT, ...RENDA, ...ANALISI];
+  nota:'Índex que combina mobilització (30 %: vot potencial entre abstencionistes), persuasió (20 %: vot d\'esquerres no-Sumar on Sumar ja té quota), base (20 %: % de Sumar), recuperació (15 %: vots perduts respecte a ECP-Guanyem 2019) i perfil (15 %: renda de la secció). P1 = el 10 % de seccions amb índex més alt; P2 = el 15 % següent; P3 = el 25 % següent.'}];
+const DG=['Fuga probable al PSC','Desmobilització','Retrocés sense patró clar','Estable','Creix'];
+const EVOL=[
+ {id:'ecp19', nom:'ECP-Guanyem 2019', grup:'evol', unitat:'%', pas:0.1, dot:'#f03b20',
+  val:d=>d.e19?d.e19.s[0]:null, breaks:[10,12,15,18], ramp:['#ffffb2','#fecc5c','#fd8d3c','#f03b20','#bd0026'],
+  titol:'ECP-Guanyem el Canvi · generals 10-N 2019 (% sobre vàlids)', filtre:'Filtra ECP 2019 per %',
+  nota:'Mateixos intervals que la capa de Sumar 2023, per poder comparar-les directament. Seccions noves o modificades des de 2019: sense dada.'},
+ {id:'var-sumar', nom:'Variació Sumar (pp)', grup:'evol', unitat:' pp', pas:0.1, dot:'#2166ac',
+  val:d=>d.e19?d.sumar[0]-d.e19.s[0]:null, suma:d=>d.e19?d.sumar[1]-d.e19.s[1]:null, sumaNom:'vots de diferència (2023 − 2019)',
+  breaks:[-4,-1.5,1.5,4], ramp:['#b2182b','#ef8a62','#f2efe9','#67a9cf','#2166ac'],
+  labels:['< −4','−4/−1,5','±1,5','1,5/4','> 4'],
+  titol:'Variació Sumar 2023 − ECP 2019 (punts percentuals sobre vàlids)', filtre:'Filtra per variació (pp)',
+  nota:'Vermell: Sumar perd suport respecte a ECP-Guanyem 2019; blau: en guanya. A Catalunya el resultat és pràcticament igual (14,2 % → 14,0 %), però amb grans diferències entre seccions. Seccions noves o amb un canvi de cens superior al 25 %: sense dada.'},
+ {id:'diagnosi', nom:'Diagnosi del canvi', grup:'evol', cat:true, unitat:'', pas:1, dot:'#d7301f',
+  val:d=>d.e19?d.e19.dg:null, breaks:[0.5,1.5,2.5,3.5], ramp:['#d7301f','#8c6bb1','#fdbb84','#dcd8cf','#2b8cbe'],
+  labels:['Fuga PSC','Desmob.','Mixt','Estable','Creix'],
+  titol:'Diagnosi del canvi 2019 → 2023 per a Sumar', filtre:'',
+  nota:'Si Sumar perd més d\'1,5 punts: «fuga probable al PSC» si el PSC hi creix almenys 1,5 punts més que la mitjana catalana (+14 punts); «desmobilització» si és l\'abstenció la que hi creix almenys 1,5 punts més que la mitjana (+6,6 punts); «sense patró clar» en la resta. «Estable» = ±1,5 punts; «Creix» = més d\'1,5 punts. Són hipòtesis a escala de secció, no transferències de vot mesurades. Fes clic en un color de la llegenda per aïllar-lo.'}];
+const CAPES = [...PARTITS, ...PRIORITAT, ...EVOL, ...RENDA, ...ANALISI];
+let catSel=null;
 let bivSel=null;  // cel·la seleccionada a la llegenda bivariant: 'fila,columna'
 const bivCat=(d,c=actiu)=>{ if(!d.sumar||d.ce==null) return null; const x=c.xval(d); return x==null?null:[ter(d.sumar[0],T_SUMAR),ter(x,c.xt)]; };
 const fmtEur=v=>v==null?'–':v.toLocaleString('ca-ES')+' €';
@@ -424,6 +451,11 @@ function estil0(f){
   }
   const v = valor(f.properties);
   const c = classe(v, actiu.breaks);
+  if(actiu.cat){
+    if(c<0) return {fillColor: css('--nodata'), fillOpacity:0.88, color:css('--stroke'), weight:secW()};
+    const fora = catSel!=null && catSel!==c;
+    return {fillColor: fora?css('--nodata'):actiu.ramp[c], fillOpacity: fora?0.3:0.9, color:css('--stroke'), weight:secW()};
+  }
   const r = rang[actiu.id], dins = v!=null && v>=r[0]-1e-9 && v<=r[1]+1e-9;
   if(!dins) return {fillColor: css('--nodata'), fillOpacity: v==null?0.88:0.3, color:css('--stroke'), weight:secW()};
   return {fillColor: actiu.ramp[c], fillOpacity:0.88, color:css('--stroke'), weight:secW()};
@@ -432,6 +464,26 @@ function popup(f){
   const p=f.properties;
   if(p.ce==null) return `<div class="pp-mun">Secció ${p.c}</div><div class="pp-sec">Sense resultats: secció creada després de les eleccions</div>`
     + (p.r!=null ? `<dl class="pp-rows"><dt>Renda neta per persona</dt><dd>${fmtEur(p.r)}</dd></dl>` : '');
+  const e=p.e19, sense19 = p.n19===1 ? 'secció nova (no existia el 2019)' : 'secció modificada (canvi de cens > 25 %)';
+  const fila19 = e ? `<dt>ECP-Guanyem 2019</dt><dd>${fmtPct(e.s[0])} (${p.sumar[0]-e.s[0]>=0?'+':''}${fmtNum(p.sumar[0]-e.s[0],1)} pp)</dd>` : `<dt>2019</dt><dd>${sense19}</dd>`;
+  if(actiu.grup==='evol'){
+    const cap0=`<div class="pp-mun">${p.m}</div><div class="pp-sec">Districte ${p.d} · Secció ${p.s} · ${p.c}</div>`;
+    if(!e) return `${cap0}<div class="pp-big"><b>–</b><span>sense comparació: ${sense19}</span></div>
+      <dl class="pp-rows"><dt>Sumar 2023</dt><dd>${fmtPct(p.sumar[0])} (${fmtInt(p.sumar[1])} vots)</dd></dl>`;
+    const dS=p.sumar[0]-e.s[0], dv=p.sumar[1]-e.s[1], rel=e.s[0]?dS/e.s[0]*100:null, a23=100-p.pa/p.ce*100;
+    const gran = actiu.id==='ecp19' ? fmtPct(e.s[0]) : actiu.id==='var-sumar' ? `${dS>=0?'+':''}${fmtNum(dS,2)} pp` : `<span class="sw" style="width:18px;height:18px;background:${actiu.ramp[e.dg]}"></span>`;
+    const et = actiu.id==='ecp19' ? 'ECP-Guanyem 2019' : actiu.id==='var-sumar' ? 'Sumar 2023 − ECP 2019' : DG[e.dg];
+    return `${cap0}
+    <div class="pp-big"><b>${gran}</b><span>${et}</span></div>
+    <dl class="pp-rows">
+      <dt>ECP 2019 → Sumar 2023</dt><dd>${fmtPct(e.s[0])} → ${fmtPct(p.sumar[0])}</dd>
+      <dt>Variació</dt><dd>${dS>=0?'+':''}${fmtNum(dS,2)} pp (${rel!=null?(rel>=0?'+':'')+fmtNum(rel,1)+' %':'–'})</dd>
+      <dt>Vots</dt><dd>${fmtInt(e.s[1])} → ${fmtInt(p.sumar[1])} (${dv>=0?'+':''}${fmtInt(dv)})</dd>
+      <dt>PSC 2019 → 2023</dt><dd>${fmtPct(e.p)} → ${fmtPct(p.psc[0])}</dd>
+      <dt>Abstenció 2019 → 2023</dt><dd>${fmtPct(e.a)} → ${fmtPct(a23)}</dd>
+      <dt>Diagnosi</dt><dd>${DG[e.dg]}</dd>
+    </dl>`;
+  }
   const filaRenda=`<dt>Renda neta per persona</dt><dd>${p.r!=null?fmtEur(p.r):'secret estadístic'}</dd>`;
   const cap=`<div class="pp-mun">${p.m}</div>
     <div class="pp-sec">Districte ${p.d} · Secció ${p.s} · ${p.c}</div>`;
@@ -451,9 +503,10 @@ function popup(f){
     return `${cap}
     <div class="pp-big"><b>${fmtNum(v,0)}</b><span>${C} · índex sobre 100</span></div>
     <dl class="pp-rows">
-      ${barra('Mobilització',q[0])}${barra('Persuasió',q[1])}${barra('Base Sumar',q[2])}${barra('Perfil (renda)',q[3])}
+      ${barra('Mobilització',q[0])}${barra('Persuasió',q[1])}${barra('Base Sumar',q[2])}${barra('Recuperació',q[3])}${barra('Perfil (renda)',q[4])}
       <dt>Sumar (% vàlids)</dt><dd>${fmtPct(p.sumar[0])}</dd>
       <dt>Vot potencial</dt><dd>${fmtInt(Math.round(potencial(p)))} vots</dd>
+      ${fila19}
       <dt>Electors censats</dt><dd>${fmtInt(p.ce)}</dd>
       ${filaRenda}
     </dl>
@@ -468,6 +521,7 @@ function popup(f){
       <dt>Sumar (% vàlids)</dt><dd>${fmtPct(p.sumar[0])}</dd>
       <dt>Càlcul</dt><dd>${fmtInt(ab)} × ${fmtNum(p.sumar[0],2)} %</dd>
       <dt>Vots Sumar 2023</dt><dd>${fmtInt(p.sumar[1])}</dd>
+      ${fila19}
       <dt>Electors censats</dt><dd>${fmtInt(p.ce)}</dd>
       ${filaRenda}
     </dl>`;
@@ -482,6 +536,7 @@ function popup(f){
       <dt>Vots Sumar</dt><dd>${fmtInt(p.sumar[1])}</dd>
       <dt>Electors censats</dt><dd>${fmtInt(p.ce)}</dd>
       <dt>Abstenció</dt><dd>${fmtPct(ab)} (${fmtInt(p.ce-p.pa)})</dd>
+      ${fila19}
       ${filaRenda}
     </dl>`;
   }
@@ -495,6 +550,7 @@ function popup(f){
       <dt>Electors censats</dt><dd>${fmtInt(p.ce)}</dd>
       <dt>Vots Sumar</dt><dd>${fmtInt(sv)}</dd>
       <dt>Sumar (% vàlids)</dt><dd>${fmtPct(sp)}</dd>
+      ${fila19}
       ${actiu.id==='sumar-psc' ? `<dt>PSC (% vàlids)</dt><dd>${fmtPct(p.psc[0])}</dd>` : ''}
       ${actiu.id==='sumar-index' ? `<dt>Mitjana Catalunya</dt><dd>${fmtPct(mitjanaSumar)}</dd>` : ''}
       <dt>Participació</dt><dd>${fmtPct(p.pa/p.ce*100)}</dd>
@@ -555,15 +611,32 @@ document.getElementById('biv').addEventListener('click',e=>{
   if(b.id==='biv-clear') bivSel=null; else if(b.dataset.k) bivSel = bivSel===b.dataset.k ? null : b.dataset.k; else return;
   llegendaBiv(); capa&&capa.setStyle(estil);
 });
+function infoCat(){
+  const el=document.getElementById('catinfo'); if(!dades.length){ el.innerHTML=''; return; }
+  const z=()=>({n:0,e:0,v19:0,v23:0}), T=[0,1,2,3,4].map(z), S=z();
+  for(const p of dades){ if(!p.e19) continue; const k=p.e19.dg, o=T[k];
+    for(const x of [o,S]){ x.n++; x.e+=p.ce; x.v19+=p.e19.s[1]; x.v23+=p.sumar[1]; } }
+  const fila=(t,o)=>`<span><b>${t}</b>: ${fmtInt(o.n)} seccions · ${fmtInt(o.e)} electors · vots Sumar ${fmtInt(o.v19)} → ${fmtInt(o.v23)} (<b>${o.v23-o.v19>=0?'+':''}${fmtInt(o.v23-o.v19)}</b>)</span>`;
+  el.innerHTML = catSel!=null
+    ? fila(DG[catSel],T[catSel])+`<span><button type="button" class="linkbtn" id="cat-clear">Mostra-les totes</button></span>`
+    : `<span>Fes clic en un color per aïllar aquelles seccions.</span>`+fila('Seccions comparables',S);
+}
+document.getElementById('ramp').addEventListener('click',e=>{ const b=e.target.closest('button[data-c]'); if(!b||!actiu.cat) return;
+  const c=+b.dataset.c; catSel = catSel===c ? null : c; llegenda(); capa&&capa.setStyle(estil); });
+document.getElementById('catinfo').addEventListener('click',e=>{ if(e.target.id==='cat-clear'){ catSel=null; llegenda(); capa&&capa.setStyle(estil); } });
 function llegenda(){
-  const esBiv=!!actiu.bivar;
+  const esBiv=!!actiu.bivar, esCat=!!actiu.cat;
+  document.getElementById('catinfo').hidden=!esCat;
   document.querySelector('.panel').classList.toggle('wide',esBiv);
   for(const id of ['ramp','ticks']) document.getElementById(id).hidden=esBiv;
-  document.getElementById('biv').hidden=!esBiv; document.getElementById('bivtab').hidden=!esBiv; document.getElementById('filtre').hidden=esBiv;
+  document.getElementById('biv').hidden=!esBiv; document.getElementById('bivtab').hidden=!esBiv; document.getElementById('filtre').hidden=esBiv||esCat;
   if(esBiv){ llegendaBiv(); document.getElementById('legend-title').textContent=actiu.titol;
     document.getElementById('note').textContent=actiu.nota; return; }
   const b=actiu.breaks;
-  document.getElementById('ramp').innerHTML=actiu.ramp.map(c=>`<span style="background:${c}"></span>`).join('');
+  document.getElementById('ramp').innerHTML = esCat
+    ? actiu.ramp.map((c,i)=>`<button type="button" data-c="${i}" style="background:${c}" aria-pressed="${catSel===i}" title="${DG[i]}" aria-label="${DG[i]}"></button>`).join('')
+    : actiu.ramp.map(c=>`<span style="background:${c}"></span>`).join('');
+  if(esCat) infoCat();
   const t=actiu.labels || [`< ${b[0]}`,`${b[0]}–${b[1]}`,`${b[1]}–${b[2]}`,`${b[2]}–${b[3]}`,`≥ ${b[3]}`];
   document.getElementById('ticks').innerHTML=t.map(x=>`<span>${x}</span>`).join('');
   document.getElementById('legend-title').textContent=actiu.titol;
@@ -571,7 +644,7 @@ function llegenda(){
     ? `Percentatge de Sumar a la secció dividit pel de Catalunya (${fmtPct(mitjanaSumar)}). 1,5 vol dir un 50 % per sobre de la mitjana.` : actiu.nota;
 }
 function selecciona(id, push){
-  const abans=actiu; actiu = CAPES.find(p=>p.id===id) || CAPES[0]; if(abans!==actiu) bivSel=null;
+  const abans=actiu; actiu = CAPES.find(p=>p.id===id) || CAPES[0]; if(abans!==actiu){ bivSel=null; catSel=null; }
   document.querySelectorAll('.parties button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.id===actiu.id));
   llegenda(); pintaFiltre();
   if(capa){ capa.setStyle(estil); map.closePopup(); }
@@ -582,7 +655,8 @@ document.getElementById('parties').innerHTML = PARTITS.map(boto).join('');
 document.getElementById('analisi').innerHTML = ANALISI.map(boto).join('');
 document.getElementById('renda').innerHTML = RENDA.map(p=>boto({...p,dot:p.ramp[3]})).join('');
 document.getElementById('prioritat').innerHTML = PRIORITAT.map(boto).join('');
-for(const id of ['parties','analisi','renda','prioritat']) document.getElementById(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) selecciona(b.dataset.id,true); });
+document.getElementById('evolucio').innerHTML = EVOL.map(boto).join('');
+for(const id of ['parties','analisi','renda','prioritat','evolucio']) document.getElementById(id).addEventListener('click',e=>{ const b=e.target.closest('button'); if(b) selecciona(b.dataset.id,true); });
 window.addEventListener('hashchange',()=>selecciona(location.hash.slice(1)));
 
 // ---- Filtre de percentatge (doble control lliscant + caselles numèriques)
@@ -607,7 +681,8 @@ function pintaFiltre(){
     const tot = lo<=mn && hi>=mx;
     let extra='';
     if(actiu.suma){ let sm=0,st=0; for(const p of dades){ const v=valor(p), x=actiu.suma(p)||0; st+=x; if(v!=null&&v>=lo-1e-9&&v<=hi+1e-9) sm+=x; }
-      extra=`<br><b>${fmtInt(Math.round(sm))}</b> vots potencials (${fmtPct(sm/st*100)} del total de Catalunya)`; }
+      extra = actiu.sumaNom ? `<br><b>${sm>=0?'+':''}${fmtInt(Math.round(sm))}</b> ${actiu.sumaNom}`
+                            : `<br><b>${fmtInt(Math.round(sm))}</b> vots potencials (${fmtPct(sm/st*100)} del total de Catalunya)`; }
     $('f-count').innerHTML = `<b>${fmtInt(n)}</b> seccions · <b>${fmtInt(e)}</b> electors${tot?' (totes)':''}${extra}`;
   }
 }
@@ -673,7 +748,7 @@ obteDades('seccions_2023').then(g=>{
     if(orig!==p.m && !munis.has(norm(orig))) munis.set(norm(orig),munis.get(k)); });
   $('munis').innerHTML=[...new Set([...munis.values()].map(m=>m.nom))].sort((a,b)=>a.localeCompare(b,'ca')).map(n=>`<option value="${n.replace(/"/g,'&quot;')}"></option>`).join('');
   dades=g.features.map(f=>f.properties).filter(p=>p.ce!=null||p.r!=null);
-  CAPES.forEach(c=>{ if(c.bivar) return; const vs=dades.filter(d=>c.sempre||d.ce!=null).map(c.val).filter(v=>v!=null&&!isNaN(v)), u=c.pas*10;
+  CAPES.forEach(c=>{ if(c.bivar||c.cat) return; const vs=dades.filter(d=>c.sempre||d.ce!=null).map(c.val).filter(v=>v!=null&&!isNaN(v)), u=c.pas*10;
     const mx=Math.ceil(Math.max(...vs)/u)*u, lo=Math.min(...vs), mn=Math.floor(lo/u)*u;
     maxim[c.id]=+mx.toFixed(2); minim[c.id]=+mn.toFixed(2); rang[c.id]=[minim[c.id],maxim[c.id]]; });
   llegenda(); pintaFiltre(); capa.setStyle(estil);
